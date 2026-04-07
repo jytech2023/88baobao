@@ -1,0 +1,32 @@
+{
+  "Brand": {
+    "name": "88 Bao Bao Ops",
+    "tagline": "Unified multi-store operations"
+  },
+  "Nav": {
+    "dashboard": "Dashboard",
+    "stores": "Stores",
+    "menu": "Menu",
+    "members": "Members",
+    "reviews": "Reviews",
+    "orders": "Orders",
+    "campaigns": "Campaigns",
+    "settings": "Settings",
+    "logout": "Sign out"
+  },
+  "Common": {
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "loading": "Loading...",
+    "empty": "No data"
+  },
+  "Auth": {
+    "signIn": "Sign in",
+    "email": "Email",
+    "password": "Password"
+  }
+}

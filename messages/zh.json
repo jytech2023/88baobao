@@ -1,0 +1,32 @@
+{
+  "Brand": {
+    "name": "88 Bao Bao 运营中心",
+    "tagline": "多门店统一运营管理"
+  },
+  "Nav": {
+    "dashboard": "数据看板",
+    "stores": "门店管理",
+    "menu": "菜单管理",
+    "members": "会员中心",
+    "reviews": "点评舆情",
+    "orders": "订单导入",
+    "campaigns": "营销活动",
+    "settings": "系统设置",
+    "logout": "退出登录"
+  },
+  "Common": {
+    "create": "新建",
+    "edit": "编辑",
+    "delete": "删除",
+    "save": "保存",
+    "cancel": "取消",
+    "search": "搜索",
+    "loading": "加载中...",
+    "empty": "暂无数据"
+  },
+  "Auth": {
+    "signIn": "登录",
+    "email": "邮箱",
+    "password": "密码"
+  }
+}
