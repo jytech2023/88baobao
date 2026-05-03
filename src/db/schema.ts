@@ -314,7 +314,206 @@ export const dailySales = pgTable(
 );
 
 // ----------------------------------------------------------------------
-// 6. Audit log
+// 7. Market Monitoring (competitors / mentions / trends / alerts)
+// ----------------------------------------------------------------------
+export const competitorTypeEnum = pgEnum("competitor_type", [
+  "self",
+  "direct",        // same category (dim sum / xlb)
+  "indirect",      // adjacent (boba, ramen, fast casual)
+  "category_lead", // benchmark (DTF, Tim Ho Wan)
+]);
+
+export const mentionSourceEnum = pgEnum("mention_source", [
+  "google",
+  "yelp",
+  "reddit",
+  "tiktok",
+  "instagram",
+  "xiaohongshu",
+  "google_trends",
+  "news",
+  "other",
+]);
+
+export const alertSeverityEnum = pgEnum("alert_severity", [
+  "info",
+  "warning",
+  "critical",
+]);
+
+export const alertChannelEnum = pgEnum("alert_channel", [
+  "feishu",
+  "slack",
+  "email",
+  "webhook",
+]);
+
+export const competitors = pgTable(
+  "competitors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 200 }).notNull(),
+    type: competitorTypeEnum("type").notNull().default("direct"),
+    isSelf: boolean("is_self").notNull().default(false),
+    cuisine: varchar("cuisine", { length: 80 }),
+    notes: text("notes"),
+    // External IDs
+    gmbPlaceId: varchar("gmb_place_id", { length: 128 }),
+    yelpId: varchar("yelp_id", { length: 128 }),
+    instagramHandle: varchar("instagram_handle", { length: 64 }),
+    tiktokHandle: varchar("tiktok_handle", { length: 64 }),
+    websiteUrl: text("website_url"),
+    // Snapshot fields (denormalized for fast dashboard)
+    avgRating: numeric("avg_rating", { precision: 3, scale: 2 }),
+    reviewCount: integer("review_count").default(0),
+    lastSnapshotAt: timestamp("last_snapshot_at", { withTimezone: true }),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("competitors_type_idx").on(t.type),
+    index("competitors_is_self_idx").on(t.isSelf),
+  ],
+);
+
+// Watch keywords (for品类趋势 + 品牌口碑)
+export const watchKeywords = pgTable("watch_keywords", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  keyword: varchar("keyword", { length: 200 }).notNull().unique(),
+  purpose: varchar("purpose", { length: 32 }).notNull(), // "brand" | "category" | "crisis"
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Generic mention stream — anything fetched from any source
+export const mentions = pgTable(
+  "mentions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: mentionSourceEnum("source").notNull(),
+    externalId: varchar("external_id", { length: 256 }),
+    competitorId: uuid("competitor_id").references(() => competitors.id, {
+      onDelete: "set null",
+    }),
+    storeId: uuid("store_id").references(() => stores.id, { onDelete: "set null" }),
+    matchedKeywordId: uuid("matched_keyword_id").references(() => watchKeywords.id, {
+      onDelete: "set null",
+    }),
+    authorName: varchar("author_name", { length: 200 }),
+    authorHandle: varchar("author_handle", { length: 200 }),
+    authorFollowers: integer("author_followers"),
+    title: text("title"),
+    content: text("content"),
+    rating: integer("rating"), // 1..5 if applicable
+    url: text("url"),
+    imageUrls: jsonb("image_urls"), // string[]
+    likeCount: integer("like_count"),
+    commentCount: integer("comment_count"),
+    // AI enrichment
+    sentiment: reviewSentimentEnum("sentiment"),
+    categories: jsonb("categories"), // string[]
+    keywords: jsonb("keywords"),
+    aiSummary: text("ai_summary"),
+    isBrandMention: boolean("is_brand_mention").notNull().default(false),
+    language: varchar("language", { length: 8 }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("mentions_source_external_idx").on(t.source, t.externalId),
+    index("mentions_competitor_idx").on(t.competitorId),
+    index("mentions_published_idx").on(t.publishedAt),
+    index("mentions_sentiment_idx").on(t.sentiment),
+  ],
+);
+
+// Time-series snapshot — for trends / Google Trends / rating over time
+export const trendSnapshots = pgTable(
+  "trend_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: mentionSourceEnum("source").notNull(),
+    metric: varchar("metric", { length: 64 }).notNull(), // "rating" | "review_count" | "trend_score" | "follower_count"
+    competitorId: uuid("competitor_id").references(() => competitors.id, {
+      onDelete: "cascade",
+    }),
+    keywordId: uuid("keyword_id").references(() => watchKeywords.id, {
+      onDelete: "cascade",
+    }),
+    value: numeric("value", { precision: 14, scale: 4 }).notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("trend_snapshots_metric_idx").on(t.metric),
+    index("trend_snapshots_captured_idx").on(t.capturedAt),
+  ],
+);
+
+// Influencers / KOL radar (for E)
+export const influencers = pgTable("influencers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  handle: varchar("handle", { length: 200 }).notNull(),
+  platform: mentionSourceEnum("platform").notNull(),
+  displayName: varchar("display_name", { length: 200 }),
+  followers: integer("followers"),
+  engagementRate: numeric("engagement_rate", { precision: 5, scale: 2 }),
+  bio: text("bio"),
+  region: varchar("region", { length: 64 }),
+  tags: jsonb("tags"),
+  contactStatus: varchar("contact_status", { length: 32 }).default("new"), // new | contacted | collab | blacklist
+  notes: text("notes"),
+  lastMentionedAt: timestamp("last_mentioned_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Site candidates (for D — selection scoring)
+export const siteCandidates = pgTable("site_candidates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  label: varchar("label", { length: 200 }).notNull(),
+  city: varchar("city", { length: 80 }),
+  state: varchar("state", { length: 16 }),
+  zip: varchar("zip", { length: 16 }),
+  lat: numeric("lat", { precision: 9, scale: 6 }),
+  lng: numeric("lng", { precision: 9, scale: 6 }),
+  // scoring inputs (snapshotted from Google Places nearby search)
+  populationDensity: integer("population_density"),
+  competitorsWithin1mi: integer("competitors_within_1mi"),
+  competitorsWithin3mi: integer("competitors_within_3mi"),
+  avgCompetitorRating: numeric("avg_competitor_rating", { precision: 3, scale: 2 }),
+  trafficScore: integer("traffic_score"),
+  rentEstimate: numeric("rent_estimate", { precision: 10, scale: 2 }),
+  // computed
+  score: numeric("score", { precision: 5, scale: 2 }),
+  status: varchar("status", { length: 32 }).default("evaluating"), // evaluating | approved | rejected | opened
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const alerts = pgTable(
+  "alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: varchar("type", { length: 64 }).notNull(), // "negative_review" | "crisis_keyword" | "competitor_promo" | "rating_drop"
+    severity: alertSeverityEnum("severity").notNull().default("info"),
+    title: varchar("title", { length: 300 }).notNull(),
+    body: text("body"),
+    sourceMentionId: uuid("source_mention_id").references(() => mentions.id, {
+      onDelete: "set null",
+    }),
+    payload: jsonb("payload"),
+    deliveredChannels: jsonb("delivered_channels"), // string[]
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("alerts_type_idx").on(t.type),
+    index("alerts_severity_idx").on(t.severity),
+    index("alerts_created_idx").on(t.createdAt),
+  ],
+);
+
+// ----------------------------------------------------------------------
+// 8. Audit log
 // ----------------------------------------------------------------------
 export const auditLogs = pgTable("audit_logs", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),

@@ -1,6 +1,6 @@
 {
   "Brand": {
-    "name": "88 Bao Bao Ops",
+    "name": "88baobao",
     "tagline": "Unified multi-store operations"
   },
   "Nav": {
@@ -11,6 +11,7 @@
     "reviews": "Reviews",
     "orders": "Orders",
     "campaigns": "Campaigns",
+    "market": "Market Intel",
     "settings": "Settings",
     "logout": "Sign out"
   },

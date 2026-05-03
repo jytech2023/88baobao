@@ -1,4 +1,4 @@
-# 88 Bao Bao 运营管理系统
+# 88baobao
 
 多门店运营中台 — Next.js 16 + Neon + Drizzle + next-intl + Auth.js
 

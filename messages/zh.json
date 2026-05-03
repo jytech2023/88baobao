@@ -1,6 +1,6 @@
 {
   "Brand": {
-    "name": "88 Bao Bao 运营中心",
+    "name": "88baobao",
     "tagline": "多门店统一运营管理"
   },
   "Nav": {
@@ -11,6 +11,7 @@
     "reviews": "点评舆情",
     "orders": "订单导入",
     "campaigns": "营销活动",
+    "market": "市场监控",
     "settings": "系统设置",
     "logout": "退出登录"
   },

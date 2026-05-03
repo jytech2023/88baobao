@@ -9,6 +9,7 @@ const navItems = [
   { href: "/reviews", key: "reviews" },
   { href: "/orders", key: "orders" },
   { href: "/campaigns", key: "campaigns" },
+  { href: "/market", key: "market" },
   { href: "/settings", key: "settings" },
 ] as const;
 

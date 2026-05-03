@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/fetch-google",
+      "schedule": "0 8,20 * * *"
+    },
+    {
+      "path": "/api/cron/fetch-yelp",
+      "schedule": "30 8,20 * * *"
+    },
+    {
+      "path": "/api/cron/fetch-reddit",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/fetch-serper",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/sync-social",
+      "schedule": "0 15 * * *"
+    }
+  ]
+}

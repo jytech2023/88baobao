@@ -1,9 +1,9 @@
 {
-  "name": "88baobao-ops",
+  "name": "88baobao",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "doppler run -- next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,26 +13,30 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
     "@neondatabase/serverless": "^0.10.4",
     "@vercel/analytics": "^1.4.1",
     "@vercel/speed-insights": "^1.1.0",
+    "ai": "^6.0.149",
     "cloudinary": "^2.5.1",
     "drizzle-orm": "^0.38.3",
     "next": "^16.0.0",
     "next-auth": "^5.0.0-beta.25",
-    "next-intl": "^3.26.3",
+    "next-intl": "^4.9.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "dotenv": "^17.4.1",
     "drizzle-kit": "^0.30.1",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
     "postcss": "^8.4.49",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2"
   }
 }
