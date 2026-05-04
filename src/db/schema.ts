@@ -685,3 +685,25 @@ export const socialDailyStats = pgTable(
     index("daily_stats_platform_date_idx").on(t.platform, t.date),
   ],
 );
+
+// Manual to-dos / action items the operator wants to track. Surfaces alongside
+// auto-generated alerts in the dashboard's "Action items" section.
+export const taskStatusEnum = pgEnum("task_status", ["open", "in_progress", "done", "archived"]);
+export const taskPriorityEnum = pgEnum("task_priority", ["low", "medium", "high"]);
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    title: varchar("title", { length: 300 }).notNull(),
+    description: text("description"),
+    priority: taskPriorityEnum("priority").notNull().default("medium"),
+    status: taskStatusEnum("status").notNull().default("open"),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    tags: jsonb("tags").default([]),
+  },
+  (t) => [index("tasks_project_status_idx").on(t.projectId, t.status, t.createdAt)],
+);

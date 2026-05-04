@@ -35,6 +35,14 @@
     "clickForStores": "Click to manage stores",
     "syncMap": "Sync map",
     "syncedTotal": "synced",
+    "todos": "To-dos",
+    "todosEmpty": "No open to-dos.",
+    "todosAddPlaceholder": "Add a task…",
+    "add": "Add",
+    "markDone": "Mark done",
+    "delete": "Delete",
+    "showCompleted": "Show completed",
+    "hideCompleted": "Hide completed",
     "websiteTrafficTodo": "Website traffic monitoring — to be added once Vercel Analytics or GA4 is wired in."
   },
   "Stores": {

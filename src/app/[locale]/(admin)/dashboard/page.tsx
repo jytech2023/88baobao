@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { neon } from "@neondatabase/serverless";
+import { TaskList } from "@/components/task-list";
 
 export const dynamic = "force-dynamic";
 
@@ -252,6 +253,21 @@ export default async function DashboardPage({
           accent={cronBad > 0 ? "red" : "emerald"}
         />
       </div>
+
+      <Card title={t("todos")}>
+        <TaskList
+          labels={{
+            heading: t("todos"),
+            empty: t("todosEmpty"),
+            addPlaceholder: t("todosAddPlaceholder"),
+            add: t("add"),
+            markDone: t("markDone"),
+            delete: t("delete"),
+            showCompleted: t("showCompleted"),
+            hideCompleted: t("hideCompleted"),
+          }}
+        />
+      </Card>
 
       <Card title={t("actionItems")} aside={`${actionCount} ${t("pending")}`}>
         {actionCount === 0 ? (

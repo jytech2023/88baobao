@@ -35,6 +35,14 @@
     "clickForStores": "点击进入门店管理",
     "syncMap": "内容同步关系",
     "syncedTotal": "已同步",
+    "todos": "代办事项",
+    "todosEmpty": "没有待办事项。",
+    "todosAddPlaceholder": "添加任务…",
+    "add": "添加",
+    "markDone": "完成",
+    "delete": "删除",
+    "showCompleted": "显示已完成",
+    "hideCompleted": "隐藏已完成",
     "websiteTrafficTodo": "网站流量监控 — 接入 Vercel Analytics 或 GA4 后启用。"
   },
   "Stores": {
