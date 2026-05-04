@@ -1,0 +1,80 @@
+name: Cron jobs
+
+# Each schedule fires the workflow; the "Determine endpoint" step routes to the
+# matching /api/cron/* endpoint based on github.event.schedule.
+#
+# All times are UTC.
+
+on:
+  schedule:
+    - cron: "0 8,20 * * *"   # /api/cron/fetch-google   — 08:00 + 20:00 UTC
+    - cron: "30 8,20 * * *"  # /api/cron/fetch-yelp     — 08:30 + 20:30 UTC
+    - cron: "0 9 * * *"      # /api/cron/fetch-reddit   — 09:00 UTC
+    - cron: "0 10 * * *"     # /api/cron/fetch-serper   — 10:00 UTC
+    - cron: "0 15 * * *"     # /api/cron/sync-social    — 15:00 UTC (≈ 8am Pacific)
+    - cron: "30 16 * * *"    # /api/cron/fetch-social-metrics — 16:30 UTC daily snapshot
+    - cron: "0 17 * * *"     # /api/cron/rollup-daily — 17:00 UTC daily rollup (after metrics)
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Endpoint to trigger manually"
+        required: true
+        default: sync-social
+        type: choice
+        options:
+          - fetch-google
+          - fetch-yelp
+          - fetch-reddit
+          - fetch-serper
+          - sync-social
+          - fetch-social-metrics
+          - rollup-daily
+
+jobs:
+  ping:
+    name: Trigger cron endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Determine endpoint from schedule
+        id: which
+        run: |
+          set -e
+          if [ -n "${{ inputs.endpoint }}" ]; then
+            echo "path=${{ inputs.endpoint }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "${{ github.event.schedule }}" in
+            "0 8,20 * * *")  echo "path=fetch-google"  >> "$GITHUB_OUTPUT" ;;
+            "30 8,20 * * *") echo "path=fetch-yelp"    >> "$GITHUB_OUTPUT" ;;
+            "0 9 * * *")     echo "path=fetch-reddit"  >> "$GITHUB_OUTPUT" ;;
+            "0 10 * * *")    echo "path=fetch-serper"  >> "$GITHUB_OUTPUT" ;;
+            "0 15 * * *")    echo "path=sync-social"   >> "$GITHUB_OUTPUT" ;;
+            "30 16 * * *")   echo "path=fetch-social-metrics" >> "$GITHUB_OUTPUT" ;;
+            "0 17 * * *")    echo "path=rollup-daily"        >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "Unknown schedule: ${{ github.event.schedule }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Hit /api/cron/${{ steps.which.outputs.path }}
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+          ENDPOINT: ${{ steps.which.outputs.path }}
+        run: |
+          set -e
+          if [ -z "$CRON_SECRET" ]; then echo "::error::CRON_SECRET secret not set"; exit 1; fi
+          if [ -z "$DEPLOY_URL" ]; then echo "::error::DEPLOY_URL repo variable not set"; exit 1; fi
+          # Strip trailing slash
+          base="${DEPLOY_URL%/}"
+          echo "Calling $base/api/cron/$ENDPOINT"
+          # --fail-with-body: dump body even on non-2xx; --max-time guards against hangs
+          curl --fail-with-body \
+               --silent --show-error \
+               --max-time 540 \
+               --retry 2 --retry-connrefused --retry-delay 10 \
+               -H "Authorization: Bearer $CRON_SECRET" \
+               -H "Accept: application/json" \
+               "$base/api/cron/$ENDPOINT"

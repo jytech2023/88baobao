@@ -36,8 +36,14 @@ async function gql<T>(query: string, variables: Record<string, unknown>): Promis
   return json.data as T;
 }
 
-export async function createFacebookPost(input: BufferPostInput): Promise<BufferPostResult> {
-  const mode = env.postMode();
+export async function createFacebookPost(
+  input: BufferPostInput,
+  modeOverride?: "draft" | "queue" | "now",
+): Promise<BufferPostResult> {
+  // 'mixed' is resolved by the cron orchestrator; if it leaks through, fall
+  // back to the conservative 'queue' so we don't accidentally shareNow.
+  const envMode = env.postMode();
+  const mode = modeOverride ?? (envMode === "mixed" ? "queue" : envMode);
   const { shareMode, saveToDraft } = modeFor(mode);
 
   const assets: Record<string, unknown> = {};

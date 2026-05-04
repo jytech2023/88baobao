@@ -18,7 +18,7 @@ export const env = {
   tiktokUsername: () => optional("TIKTOK_USERNAME"),
   tiktokFetchLimit: () => Number(optional("TIKTOK_FETCH_LIMIT", "10")),
   cronSecret: () => required("CRON_SECRET"),
-  postMode: () => (optional("POST_MODE", "queue") as "draft" | "queue" | "now"),
+  postMode: () => (optional("POST_MODE", "mixed") as "draft" | "queue" | "now" | "mixed"),
   throwbackDays: () => Number(optional("THROWBACK_DAYS", "14")),
   aiGatewayApiKey: () => optional("AI_GATEWAY_API_KEY"),
 

@@ -550,3 +550,138 @@ export const membersRelations = relations(members, ({ one, many }) => ({
   visits: many(memberVisits),
   couponGrants: many(couponGrants),
 }));
+
+// ----------------------------------------------------------------------
+// Marketing / social-sync tracking
+// (also created by sdg-admin's initializeDatabase — same physical tables,
+// just defined here for type-safe querying from this app.)
+// ----------------------------------------------------------------------
+
+export const socialSources = pgTable("social_sources", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull(),
+  platform: varchar("platform", { length: 20 }).notNull(),
+  role: varchar("role", { length: 20 }).notNull(),
+  username: varchar("username", { length: 255 }),
+  externalId: varchar("external_id", { length: 255 }),
+  url: text("url"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const syncedPosts = pgTable(
+  "synced_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    sourcePlatform: varchar("source_platform", { length: 20 }).notNull(),
+    sourceId: varchar("source_id", { length: 255 }).notNull(),
+    fingerprint: varchar("fingerprint", { length: 16 }),
+    sourceUrl: text("source_url"),
+    sourceCaption: text("source_caption"),
+    sourcePostedAt: timestamp("source_posted_at", { withTimezone: true }),
+    destinationId: varchar("destination_id", { length: 64 }),
+    destinationCaption: text("destination_caption"),
+    status: varchar("status", { length: 20 }),
+    postedAt: timestamp("posted_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [index("synced_posts_project_idx").on(t.projectId, t.postedAt)],
+);
+
+export const syncRuns = pgTable(
+  "sync_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    fetchedCount: integer("fetched_count"),
+    postedCount: integer("posted_count"),
+    skippedCount: integer("skipped_count"),
+    status: varchar("status", { length: 20 }),
+    errorMessage: text("error_message"),
+    details: jsonb("details"),
+  },
+  (t) => [index("sync_runs_project_idx").on(t.projectId, t.startedAt)],
+);
+
+export const socialMetricsSnapshots = pgTable(
+  "social_metrics_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    platform: varchar("platform", { length: 20 }).notNull(),
+    handle: varchar("handle", { length: 255 }),
+    externalId: varchar("external_id", { length: 255 }),
+    profileUrl: text("profile_url"),
+    followersCount: integer("followers_count"),
+    followingCount: integer("following_count"),
+    postsCount: integer("posts_count"),
+    totalLikes: bigint("total_likes", { mode: "number" }),
+    totalViews: bigint("total_views", { mode: "number" }),
+    avgEngagement: numeric("avg_engagement", { precision: 10, scale: 2 }),
+    raw: jsonb("raw"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("metrics_project_platform_idx").on(t.projectId, t.platform, t.fetchedAt)],
+);
+
+// All posts on owned social channels (IG / TikTok / FB).
+// Source-of-truth inventory; engagement counts are updated on every fetch.
+// `synced_posts` (above) is a separate cross-post mapping.
+export const socialPosts = pgTable(
+  "social_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    platform: varchar("platform", { length: 20 }).notNull(),
+    accountHandle: varchar("account_handle", { length: 255 }),
+    externalId: varchar("external_id", { length: 255 }).notNull(),
+    shortCode: varchar("short_code", { length: 64 }),
+    url: text("url"),
+    type: varchar("type", { length: 20 }),
+    caption: text("caption"),
+    coverUrl: text("cover_url"),
+    mediaUrls: jsonb("media_urls"),
+    likesCount: integer("likes_count"),
+    commentsCount: integer("comments_count"),
+    sharesCount: integer("shares_count"),
+    viewsCount: bigint("views_count", { mode: "number" }),
+    savesCount: integer("saves_count"),
+    raw: jsonb("raw"),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("social_posts_unique").on(t.platform, t.externalId),
+    index("social_posts_project_platform_idx").on(t.projectId, t.platform, t.postedAt),
+  ],
+);
+
+// Per-day rollup of social activity. Computed by /api/cron/rollup-daily after
+// the metrics fetcher has run. Use account_handle = '*' for the aggregated
+// row across all sub-accounts of a platform.
+export const socialDailyStats = pgTable(
+  "social_daily_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").notNull(),
+    platform: varchar("platform", { length: 20 }).notNull(),
+    accountHandle: varchar("account_handle", { length: 255 }).notNull().default("*"),
+    date: timestamp("date", { mode: "string" }).notNull(),
+    postsPublished: integer("posts_published").notNull().default(0),
+    totalLikes: bigint("total_likes", { mode: "number" }),
+    totalComments: integer("total_comments"),
+    totalViews: bigint("total_views", { mode: "number" }),
+    followersCount: integer("followers_count"),
+    followersDelta: integer("followers_delta"),
+    reviewsCount: integer("reviews_count"),
+    avgRating: numeric("avg_rating", { precision: 3, scale: 2 }),
+    raw: jsonb("raw"),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("daily_stats_unique").on(t.projectId, t.platform, t.accountHandle, t.date),
+    index("daily_stats_platform_date_idx").on(t.platform, t.date),
+  ],
+);
