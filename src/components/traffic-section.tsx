@@ -33,8 +33,11 @@ type Channel = {
   rows: Row[];
 };
 
+type View = "totals" | "detailed";
+
 async function loadAnalytics(
   period: Period,
+  view: View,
 ): Promise<{ channels: Channel[]; lastUpdated: string | null }> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS[period] * 86400000)
     .toISOString()
@@ -87,22 +90,26 @@ async function loadAnalytics(
     console.error("traffic-section query failed:", e);
   }
 
-  const map = new Map<string, Channel>();
+  // Bucket the raw rows by handle, separating the rollup's "*" platform-only
+  // rows (which lack follower counts) from per-handle rows.
+  const perHandleMap = new Map<string, Channel>();
+  const starRowsByPlatform = new Map<string, Row[]>();
   for (const r of rows) {
-    // Drop the rollup's per-platform '*' rows — they only carry posts_published,
-    // not followers, and would render misleading half-empty cards. We synthesize
-    // a proper cross-handle aggregate below.
-    if (r.account_handle === "*") continue;
-    const key = `${r.platform}|${r.account_handle}`;
-    if (!map.has(key)) {
-      map.set(key, { platform: r.platform, handle: r.account_handle, rows: [] });
+    if (r.account_handle === "*") {
+      if (!starRowsByPlatform.has(r.platform)) starRowsByPlatform.set(r.platform, []);
+      starRowsByPlatform.get(r.platform)!.push(r);
+      continue;
     }
-    map.get(key)!.rows.push(r);
+    const key = `${r.platform}|${r.account_handle}`;
+    if (!perHandleMap.has(key)) {
+      perHandleMap.set(key, { platform: r.platform, handle: r.account_handle, rows: [] });
+    }
+    perHandleMap.get(key)!.rows.push(r);
   }
-  const perHandle = [...map.values()];
+  const perHandle = [...perHandleMap.values()];
 
-  // Synthesize one "(all)" aggregate channel per platform: sums posts/likes/
-  // views/delta and followers across handles, per bucket.
+  // Synthesize one cross-handle aggregate per platform from per-handle rows
+  // (sums posts/likes/views/delta/followers per bucket).
   const aggMap = new Map<string, Channel>();
   for (const ch of perHandle) {
     let agg = aggMap.get(ch.platform);
@@ -136,31 +143,51 @@ async function loadAnalytics(
         (aggRow.followers_end ?? 0) + (r.followers_end ?? 0);
       aggRow.reviews = (aggRow.reviews ?? 0) + (r.reviews ?? 0);
     }
-    // sort agg rows by bucket desc to match per-handle ordering
     agg.rows.sort((a, b) => b.bucket.localeCompare(a.bucket));
   }
-  const aggregates = [...aggMap.values()];
 
-  // Render order: aggregates first (one per platform), then individual handles.
-  const channels = [
-    ...aggregates.sort((a, b) => a.platform.localeCompare(b.platform)),
-    ...perHandle.sort(
-      (a, b) =>
-        a.platform.localeCompare(b.platform) || a.handle.localeCompare(b.handle),
-    ),
-  ];
+  // For platforms that only have a "*" row (e.g. Facebook today) and no per-
+  // handle breakdown, fall back to the "*" row so the platform still appears.
+  for (const [platform, starRows] of starRowsByPlatform) {
+    if (aggMap.has(platform)) continue;
+    aggMap.set(platform, {
+      platform,
+      handle: "(all)",
+      rows: starRows.map((r) => ({ ...r, account_handle: "(all)" })),
+    });
+  }
+
+  const aggregates = [...aggMap.values()].sort((a, b) =>
+    a.platform.localeCompare(b.platform),
+  );
+
+  const channels =
+    view === "detailed"
+      ? [
+          ...aggregates,
+          ...perHandle.sort(
+            (a, b) =>
+              a.platform.localeCompare(b.platform) ||
+              a.handle.localeCompare(b.handle),
+          ),
+        ]
+      : aggregates;
   return { channels, lastUpdated };
 }
 
 export async function TrafficSection({
   period,
   locale,
+  view = "totals",
+  basePath = "/dashboard",
 }: {
   period: Period;
   locale: string;
+  view?: View;
+  basePath?: string;
 }) {
   const t = await getTranslations("Analytics");
-  const { channels, lastUpdated } = await loadAnalytics(period);
+  const { channels, lastUpdated } = await loadAnalytics(period, view);
 
   return (
     <section className="space-y-4">
@@ -176,7 +203,7 @@ export async function TrafficSection({
           {PERIODS.map((p) => (
             <a
               key={p}
-              href={`/${locale}/dashboard?period=${p}`}
+              href={`/${locale}${basePath}?period=${p}`}
               aria-current={p === period ? "page" : undefined}
               className={`rounded px-3 py-1.5 text-sm transition ${
                 p === period
