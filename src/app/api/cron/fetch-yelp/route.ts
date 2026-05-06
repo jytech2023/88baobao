@@ -14,6 +14,7 @@ import { neon } from "@neondatabase/serverless";
 import { assertCronAuth } from "@/lib/cron-auth";
 import { lookupYelpBusiness } from "@/lib/sources/serper";
 import { STORES } from "@/lib/stores";
+import { PROJECT_ID } from "@/lib/project";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -27,16 +28,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const projects = (await sql`
-    SELECT id FROM projects WHERE slug = '88baobao' LIMIT 1
-  `) as { id: string }[];
-  const projectId = projects[0]?.id;
-  if (!projectId) {
-    return NextResponse.json(
-      { ok: false, error: "project '88baobao' not found" },
-      { status: 500 },
-    );
-  }
+  const projectId = PROJECT_ID;
 
   const date = new Date().toISOString().slice(0, 10);
   const saved: Array<{ slug: string; rating: number; reviews: number }> = [];

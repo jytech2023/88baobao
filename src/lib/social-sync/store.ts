@@ -8,20 +8,12 @@
 //                  cross-posted on multiple platforms)
 
 import { neon } from "@neondatabase/serverless";
+import { PROJECT_ID } from "@/lib/project";
 
 const sql = neon(process.env.DATABASE_URL!);
-const PROJECT_SLUG = "88baobao";
-
-let projectIdCache: string | null = null;
 
 async function projectId(): Promise<string> {
-  if (projectIdCache) return projectIdCache;
-  const rows = (await sql`
-    SELECT id FROM projects WHERE slug = ${PROJECT_SLUG} LIMIT 1
-  `) as { id: string }[];
-  if (rows.length === 0) throw new Error(`project '${PROJECT_SLUG}' not found`);
-  projectIdCache = rows[0].id;
-  return projectIdCache;
+  return PROJECT_ID;
 }
 
 export async function getSeenIds(): Promise<Set<string>> {

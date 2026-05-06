@@ -7,17 +7,9 @@
 //   - reviews                      → reviews_count + avg_rating (Google + Yelp)
 
 import { neon } from "@neondatabase/serverless";
+import { PROJECT_ID } from "@/lib/project";
 
 const sql = neon(process.env.DATABASE_URL!);
-
-let projectIdCache: string | null = null;
-async function projectId(): Promise<string> {
-  if (projectIdCache) return projectIdCache;
-  const rows = (await sql`SELECT id FROM projects WHERE slug = '88baobao' LIMIT 1`) as { id: string }[];
-  if (rows.length === 0) throw new Error("project '88baobao' not found");
-  projectIdCache = rows[0].id;
-  return projectIdCache;
-}
 
 export type RollupResult = {
   date: string;
@@ -29,7 +21,7 @@ export type RollupResult = {
  * Compute rollup for `date` (YYYY-MM-DD). Defaults to today (UTC).
  */
 export async function rollupDaily(dateStr?: string): Promise<RollupResult> {
-  const pid = await projectId();
+  const pid = PROJECT_ID;
   const date = dateStr ?? new Date().toISOString().slice(0, 10);
   const prev = new Date(new Date(date).getTime() - 86400000).toISOString().slice(0, 10);
 

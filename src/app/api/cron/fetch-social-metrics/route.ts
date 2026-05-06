@@ -5,26 +5,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { assertCronAuth } from "@/lib/cron-auth";
 import { snapshotInstagram, snapshotTikTok, snapshotFacebook } from "@/lib/social-metrics";
+import { PROJECT_ID } from "@/lib/project";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const sql = neon(process.env.DATABASE_URL!);
 
-async function projectIdFor(slug: string): Promise<string | null> {
-  const rows = (await sql`SELECT id FROM projects WHERE slug = ${slug} LIMIT 1`) as { id: string }[];
-  return rows[0]?.id ?? null;
-}
-
 export async function GET(req: NextRequest) {
   try { assertCronAuth(req); } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status: 401 });
   }
 
-  const projectId = await projectIdFor("88baobao");
-  if (!projectId) {
-    return NextResponse.json({ ok: false, error: "project '88baobao' not found" }, { status: 500 });
-  }
+  const projectId = PROJECT_ID;
 
   // Read all 'source'-role accounts from social_sources for this project,
   // plus Facebook as a single 'destination' (since Buffer aggregates posts

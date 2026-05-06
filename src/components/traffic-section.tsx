@@ -268,6 +268,21 @@ function ChannelTable({
   const showReviews = ["google", "yelp"].includes(platform);
   const showEngagement = ["instagram", "tiktok", "facebook"].includes(platform);
 
+  // Pick the headline metric for the sparkline trend strip.
+  // - IG / TikTok / FB → followers (most useful trend signal)
+  // - Yelp / Google → review count (followers don't apply)
+  const trendKey: keyof Row = showFollowers ? "followers_end" : "reviews";
+  const trendLabel = showFollowers ? t("col.followers") : t("col.reviews");
+  // rows are bucket DESC; chart wants chronological order (left = oldest).
+  const trendValues = [...rows]
+    .reverse()
+    .map((r) => {
+      const v = r[trendKey];
+      if (v == null) return null;
+      const n = typeof v === "string" ? Number(v) : (v as number);
+      return Number.isFinite(n) ? n : null;
+    });
+
   return (
     <section className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
       <header className="flex items-center justify-between gap-3 border-b border-black/10 bg-black/2 px-4 py-3 dark:border-white/10 dark:bg-white/2">
@@ -286,6 +301,8 @@ function ChannelTable({
           {rows.length} {t("buckets")}
         </div>
       </header>
+      <Sparkline values={trendValues} label={trendLabel} />
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -381,4 +398,89 @@ function formatBucket(bucket: string, period: Period): string {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/**
+ * Inline SVG sparkline of a single metric across period buckets.
+ * Hides itself when there's only one usable data point (a single dot reads
+ * as visual noise, not signal — wait until a second day's rollup lands).
+ */
+function Sparkline({
+  values,
+  label,
+}: {
+  values: Array<number | null>;
+  label: string;
+}) {
+  const usable = values.filter((v): v is number => v != null);
+  if (usable.length < 2) return null;
+
+  const W = 320;
+  const H = 48;
+  const PAD = 4;
+  const min = Math.min(...usable);
+  const max = Math.max(...usable);
+  const range = max - min || 1;
+  const xStep = (W - PAD * 2) / Math.max(values.length - 1, 1);
+
+  // Build the path; leave gaps for nulls by lifting pen.
+  const segments: string[] = [];
+  let pen = false;
+  values.forEach((v, i) => {
+    if (v == null) {
+      pen = false;
+      return;
+    }
+    const x = PAD + i * xStep;
+    const y = H - PAD - ((v - min) / range) * (H - PAD * 2);
+    segments.push(`${pen ? "L" : "M"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+    pen = true;
+  });
+  const d = segments.join(" ");
+
+  // Last + first usable points for endpoint dots
+  const firstIdx = values.findIndex((v) => v != null);
+  const lastIdx = values.length - 1 - [...values].reverse().findIndex((v) => v != null);
+  const dot = (i: number, v: number) => {
+    const x = PAD + i * xStep;
+    const y = H - PAD - ((v - min) / range) * (H - PAD * 2);
+    return { x: x.toFixed(2), y: y.toFixed(2) };
+  };
+  const last = dot(lastIdx, values[lastIdx] as number);
+  const trend = (values[lastIdx] as number) - (values[firstIdx] as number);
+  const trendColor =
+    trend > 0
+      ? "text-emerald-600 dark:text-emerald-400"
+      : trend < 0
+        ? "text-red-600 dark:text-red-400"
+        : "text-black/50 dark:text-white/50";
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-black/5 px-4 py-2 dark:border-white/5">
+      <span className="text-[10px] uppercase tracking-wider text-black/40 dark:text-white/40">
+        {label}
+      </span>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="h-10 flex-1 max-w-70"
+        aria-hidden
+      >
+        <path
+          d={d}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={trendColor}
+        />
+        <circle cx={last.x} cy={last.y} r="2.5" className={`fill-current ${trendColor}`} />
+      </svg>
+      <span className={`min-w-12 text-right font-mono text-xs ${trendColor}`}>
+        {trend > 0 ? "+" : ""}
+        {trend.toLocaleString()}
+      </span>
+    </div>
+  );
 }

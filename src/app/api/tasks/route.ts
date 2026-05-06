@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
+import { PROJECT_ID } from "@/lib/project";
 
 const sql = neon(process.env.DATABASE_URL!);
 
 async function projectId(): Promise<string> {
-  const rows = (await sql`SELECT id FROM projects WHERE slug = '88baobao' LIMIT 1`) as { id: string }[];
-  if (rows.length === 0) throw new Error("project '88baobao' not found");
-  return rows[0].id;
+  return PROJECT_ID;
 }
 
 export async function GET(req: NextRequest) {
