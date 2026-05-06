@@ -70,20 +70,20 @@ async function loadStats() {
     `, [] as { id: string; type: string; severity: string; title: string; created_at: string }[]),
     safe(() => sql`
       SELECT id, source_platform, destination_caption, posted_at FROM synced_posts
-      ORDER BY posted_at DESC LIMIT 5
+      ORDER BY posted_at DESC LIMIT 50
     `, [] as { id: string; source_platform: string; destination_caption: string | null; posted_at: string }[]),
     safe(() => sql`
       SELECT id, source, rating, sentiment, content, published_at FROM reviews
-      ORDER BY published_at DESC NULLS LAST LIMIT 5
+      ORDER BY published_at DESC NULLS LAST LIMIT 50
     `, [] as { id: string; source: string; rating: number | null; sentiment: string | null; content: string | null; published_at: string | null }[]),
     safe(() => sql`
       SELECT id, status, posted_count, started_at FROM sync_runs
-      ORDER BY started_at DESC LIMIT 5
+      ORDER BY started_at DESC LIMIT 50
     `, [] as { id: string; status: string | null; posted_count: number | null; started_at: string }[]),
     safe(() => sql`
       SELECT id, error_message, started_at FROM sync_runs
-      WHERE status = 'failed' AND started_at > NOW() - INTERVAL '24 hours'
-      ORDER BY started_at DESC LIMIT 5
+      WHERE status = 'failed' AND started_at > NOW() - INTERVAL '7 days'
+      ORDER BY started_at DESC LIMIT 20
     `, [] as { id: string; error_message: string | null; started_at: string }[]),
     // For each platform, take the LATEST snapshot per (handle), then SUM across handles.
     // This way multiple sub-accounts of the same platform are aggregated.
@@ -726,7 +726,7 @@ function mergeActivity(data: Awaited<ReturnType<typeof loadStats>>): ActivityEve
   }
   return events
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 12);
+    .slice(0, 100);
 }
 
 function relativeTime(at: Date | string): string {
