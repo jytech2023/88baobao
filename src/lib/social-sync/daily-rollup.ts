@@ -116,6 +116,30 @@ export async function rollupDaily(dateStr?: string): Promise<RollupResult> {
     }
   }
 
+  // Every synced_post lands on Facebook regardless of source platform, so FB's
+  // "posts published today" = sum of all source platforms for the day. Attach
+  // the count to whichever facebook handle row exists (snapshot wrote one with
+  // the page name); fall back to a `facebook|page` row if there isn't one.
+  const fbPostsToday = postsRows.reduce((sum, p) => sum + p.posts, 0);
+  if (fbPostsToday > 0) {
+    let attached = false;
+    for (const [k, row] of rowsByKey.entries()) {
+      if (k.startsWith("facebook|") && k !== "facebook|*") {
+        row.posts = fbPostsToday;
+        attached = true;
+        break;
+      }
+    }
+    if (!attached) {
+      rowsByKey.set("facebook|page", {
+        platform: "facebook",
+        handle: "page",
+        posts: fbPostsToday,
+        followers: null, delta: null, likes: null, views: null, reviews: null, rating: null,
+      });
+    }
+  }
+
   // Reviews aggregates → 'google'/'yelp' platform with handle = '*'
   for (const r of reviewAgg) {
     const k = `${r.platform}|*`;
