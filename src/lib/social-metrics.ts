@@ -3,7 +3,6 @@
 //   FB         → Buffer post analytics (we already publish through Buffer)
 
 const APIFY_BASE = "https://api.apify.com/v2/acts";
-const BUFFER_GRAPHQL = "https://api.buffer.com/2/graphql";
 
 export type Snapshot = {
   platform: "instagram" | "tiktok" | "facebook";
@@ -105,50 +104,48 @@ export async function snapshotTikTok(username: string): Promise<Snapshot> {
 // Facebook: use Buffer's analytics on the connected page channel.
 // Falls back to a "no-data" snapshot if the analytics call fails.
 export async function snapshotFacebook(): Promise<Snapshot> {
-  const apiKey = process.env.BUFFER_API_KEY!;
-  const channelId = process.env.BUFFER_CHANNEL_ID!;
-  const orgId = process.env.BUFFER_ORGANIZATION_ID!;
+  const token = process.env.APIFY_TOKEN!;
   const pageId = "61570636683046";
   const profileUrl = `https://www.facebook.com/profile.php?id=${pageId}`;
 
-  // Buffer doesn't expose follower count for FB pages via their public API;
-  // best we can do is per-post post counts and aggregate engagement.
-  const res = await fetch(BUFFER_GRAPHQL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+  // Buffer's API doesn't expose follower count for FB pages, so we run
+  // apify~facebook-pages-scraper instead — it returns followers / likes /
+  // rating / category metadata in one call (~$0.07, ~30s).
+  const res = await fetch(
+    `${APIFY_BASE}/apify~facebook-pages-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=120`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        startUrls: [{ url: profileUrl }],
+        onlyData: true,
+      }),
     },
-    body: JSON.stringify({
-      query: `
-        query Recent($input: PostsInput!, $first: Int) {
-          posts(input: $input, first: $first) {
-            edges { node { id status createdAt } }
-          }
-        }
-      `,
-      variables: {
-        input: {
-          organizationId: orgId,
-          filter: { channelIds: [channelId], status: ["sent"] },
-          sort: [{ field: "createdAt", direction: "desc" }],
-        },
-        first: 50,
-      },
-    }),
-  });
-  let postsCount: number | undefined;
-  let raw: unknown = null;
-  if (res.ok) {
-    const data = (await res.json()) as { data?: { posts?: { edges?: unknown[] } } };
-    postsCount = data.data?.posts?.edges?.length;
-    raw = data.data;
+  );
+  if (!res.ok) {
+    throw new Error(`FB page scrape failed: ${res.status}`);
   }
+  const arr = (await res.json()) as Array<{
+    title?: string;
+    pageId?: string;
+    pageUrl?: string;
+    facebookUrl?: string;
+    followers?: number;
+    likes?: number;
+    rating?: string;
+    ratingCount?: number;
+    categories?: string[];
+  }>;
+  const p = arr[0];
+  if (!p) throw new Error("FB scraper returned no data");
+
   return {
     platform: "facebook",
-    externalId: pageId,
-    profileUrl,
-    postsCount,
-    raw,
+    handle: p.title ?? "page",
+    externalId: p.pageId ?? pageId,
+    profileUrl: p.pageUrl ?? p.facebookUrl ?? profileUrl,
+    followersCount: p.followers,
+    totalLikes: p.likes,
+    raw: p,
   };
 }
