@@ -1,15 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db/client";
-import { competitors, mentions, trendSnapshots } from "@/db/schema";
-import { eq, isNotNull } from "drizzle-orm";
-import { fetchPlaceDetails } from "@/lib/sources/google-places";
-import { classifyMention } from "@/lib/ai-classify";
-import { createAlert } from "@/lib/alerts";
-import { assertCronAuth } from "@/lib/cron-auth";
+// Google Maps aggregate fetch via Serper.
+//
+// Replaces the old GOOGLE_PLACES_API_KEY + per-store gmbPlaceId pipeline
+// (which required seeding a competitors table). Serper's /places endpoint
+// takes "<name> <city>" and returns rating + ratingCount + address directly.
+//
+// Writes one row per store into social_daily_stats (platform="google",
+// account_handle=<store-slug>) so the dashboard's TrafficSection picks them
+// up alongside Yelp / IG / TikTok / FB.
 
+import { NextRequest, NextResponse } from "next/server";
+import { neon } from "@neondatabase/serverless";
+import { assertCronAuth } from "@/lib/cron-auth";
+import { lookupGoogleBusiness } from "@/lib/sources/serper";
+import { STORES } from "@/lib/stores";
+
+export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const BRAND_NAMES = ["88 Bao Bao", "88baobao", "88 baobao", "88宝宝", "宝宝点心"];
+const sql = neon(process.env.DATABASE_URL!);
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,99 +26,53 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const targets = await db
-    .select()
-    .from(competitors)
-    .where(isNotNull(competitors.gmbPlaceId));
+  const projects = (await sql`
+    SELECT id FROM projects WHERE slug = '88baobao' LIMIT 1
+  `) as { id: string }[];
+  const projectId = projects[0]?.id;
+  if (!projectId) {
+    return NextResponse.json(
+      { ok: false, error: "project '88baobao' not found" },
+      { status: 500 },
+    );
+  }
 
-  const summary: Array<{ name: string; new: number; total: number }> = [];
+  const date = new Date().toISOString().slice(0, 10);
+  const saved: Array<{ slug: string; rating: number; reviews: number }> = [];
+  const failed: Array<{ slug: string; reason: string }> = [];
 
-  for (const c of targets) {
-    if (!c.gmbPlaceId) continue;
+  for (const store of STORES) {
+    if (store.status !== "open") continue;
     try {
-      const details = await fetchPlaceDetails(c.gmbPlaceId);
-
-      // snapshot rating + count
-      if (details.rating != null) {
-        await db.insert(trendSnapshots).values({
-          source: "google",
-          metric: "rating",
-          competitorId: c.id,
-          value: String(details.rating),
-        });
+      const r = await lookupGoogleBusiness({
+        name: store.nameEn,
+        city: `${store.city}, ${store.state}`,
+      });
+      if (!r) {
+        failed.push({ slug: store.slug, reason: "no Google Places match" });
+        continue;
       }
-      if (details.userRatingCount != null) {
-        await db.insert(trendSnapshots).values({
-          source: "google",
-          metric: "review_count",
-          competitorId: c.id,
-          value: String(details.userRatingCount),
-        });
-      }
-      await db
-        .update(competitors)
-        .set({
-          avgRating: details.rating != null ? String(details.rating) : null,
-          reviewCount: details.userRatingCount ?? 0,
-          lastSnapshotAt: new Date(),
-        })
-        .where(eq(competitors.id, c.id));
-
-      // store new reviews
-      let newCount = 0;
-      for (const r of details.reviews) {
-        const cls = r.content
-          ? await classifyMention({
-              source: "google",
-              brandNames: BRAND_NAMES,
-              text: r.content,
-              rating: r.rating,
-            }).catch(() => null)
-          : null;
-
-        const inserted = await db
-          .insert(mentions)
-          .values({
-            source: "google",
-            externalId: r.externalId,
-            competitorId: c.id,
-            authorName: r.authorName,
-            content: r.content,
-            rating: r.rating,
-            publishedAt: r.publishedAt,
-            language: cls?.language ?? r.language,
-            sentiment: cls?.sentiment,
-            categories: cls?.categories,
-            keywords: cls?.keywords,
-            aiSummary: cls?.summary,
-            isBrandMention: cls?.isBrandMention ?? c.isSelf,
-          })
-          .onConflictDoNothing({
-            target: [mentions.source, mentions.externalId],
-          })
-          .returning({ id: mentions.id });
-
-        if (inserted.length > 0) {
-          newCount++;
-          // crisis alert
-          if (cls?.isCrisis || (r.rating != null && r.rating <= 2 && c.isSelf)) {
-            await createAlert({
-              type: cls?.isCrisis ? "crisis_keyword" : "negative_review",
-              severity: cls?.isCrisis ? "critical" : "warning",
-              title: `${c.name} — ${r.rating ?? "?"}★ on Google`,
-              body: r.content?.slice(0, 500),
-              sourceMentionId: inserted[0].id,
-              payload: { url: r.externalId, author: r.authorName },
-            });
-          }
-        }
-      }
-
-      summary.push({ name: c.name, new: newCount, total: details.reviews.length });
-    } catch (e) {
-      summary.push({ name: c.name, new: 0, total: 0, ...{ error: String(e) } });
+      await sql`
+        INSERT INTO social_daily_stats (
+          project_id, platform, account_handle, date,
+          reviews_count, avg_rating
+        ) VALUES (
+          ${projectId}, 'google', ${store.slug}, ${date}::date,
+          ${r.ratingCount}, ${r.rating}
+        )
+        ON CONFLICT (project_id, platform, account_handle, date) DO UPDATE SET
+          reviews_count = EXCLUDED.reviews_count,
+          avg_rating    = EXCLUDED.avg_rating,
+          computed_at   = NOW()
+      `;
+      saved.push({ slug: store.slug, rating: r.rating, reviews: r.ratingCount });
+    } catch (err) {
+      failed.push({
+        slug: store.slug,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
-  return NextResponse.json({ ok: true, summary });
+  return NextResponse.json({ ok: true, date, saved, failed });
 }

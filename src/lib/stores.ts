@@ -1,20 +1,16 @@
-/**
- * Seed all 88 Bao Bao stores into both `stores` and `competitors` (as self).
- *
- * Run: node --env-file=.env.local --import tsx scripts/seed-stores.ts
- *
- * Sources verified via Yelp / web search 2026:
- *   https://www.88baobaous.com/   (city list)
- *   yelp.com/biz/* slugs
- */
-import { db } from "../src/db/client";
-import { stores, competitors } from "../src/db/schema";
-import { eq } from "drizzle-orm";
-import { STORES } from "../src/lib/stores";
+export type Store = {
+  slug: string;
+  nameEn: string;
+  status: "open" | "opening_soon" | "closed";
+  addressLine1?: string;
+  city: string;
+  state: string;
+  zip?: string;
+  phone?: string;
+  yelpSlug?: string; // yelp.com/biz/<slug>
+};
 
-// Legacy inlined list — kept for reference only, no longer used.
-// Delete this block when convenient; STORES is imported from src/lib/stores.ts.
-const STORES_OLD = [
+export const STORES: Store[] = [
   {
     slug: "dublin",
     nameEn: "88 Bao Bao — Dublin",
@@ -135,69 +131,3 @@ const STORES_OLD = [
     state: "CA",
   },
 ];
-
-async function main() {
-  for (const s of STORES) {
-    // upsert store
-    const existing = await db
-      .select()
-      .from(stores)
-      .where(eq(stores.slug, s.slug))
-      .limit(1);
-
-    let storeId: string;
-    if (existing.length === 0) {
-      const [row] = await db
-        .insert(stores)
-        .values({
-          slug: s.slug,
-          nameEn: s.nameEn,
-          status: s.status,
-          addressLine1: s.addressLine1,
-          city: s.city,
-          state: s.state,
-          zip: s.zip,
-          phone: s.phone,
-        })
-        .returning({ id: stores.id });
-      storeId = row.id;
-      console.log(`+ store ${s.slug}`);
-    } else {
-      storeId = existing[0].id;
-      console.log(`= store ${s.slug}`);
-    }
-
-    // upsert as self-competitor for monitoring
-    const compName = s.nameEn;
-    const existingComp = await db
-      .select()
-      .from(competitors)
-      .where(eq(competitors.name, compName))
-      .limit(1);
-
-    if (existingComp.length === 0) {
-      await db.insert(competitors).values({
-        name: compName,
-        type: "self",
-        isSelf: true,
-        cuisine: "dim sum",
-        yelpId: s.yelpSlug,
-        websiteUrl: "https://www.88baobaous.com/",
-      });
-      console.log(`  + competitor self/${s.slug}${s.yelpSlug ? " (yelp✓)" : ""}`);
-    }
-  }
-
-  // remove the old generic "88 Bao Bao (Dublin)" placeholder from earlier seed
-  await db
-    .delete(competitors)
-    .where(eq(competitors.name, "88 Bao Bao (Dublin)"));
-
-  console.log("✅ Stores seed complete");
-  process.exit(0);
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});

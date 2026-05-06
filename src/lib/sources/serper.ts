@@ -75,6 +75,84 @@ export async function news(args: {
   });
 }
 
+/**
+ * Look up a Yelp business listing via Google search and read the rating /
+ * review-count fields that come back attached to the SERP rich result.
+ *
+ * Avoids Yelp Fusion API entirely (now ~$229/mo for new applicants) and
+ * dodges Cloudflare-protected direct-fetch on yelp.com (server IPs get 403'd).
+ */
+export async function lookupYelpBusiness(args: {
+  name: string;
+  city?: string;
+  slug?: string; // yelp.com/biz/<slug> — used to disambiguate when multiple matches
+}): Promise<{
+  rating: number;
+  ratingCount: number;
+  url: string;
+  title: string;
+} | null> {
+  const q = `${args.name}${args.city ? ` ${args.city}` : ""} site:yelp.com`;
+  const data = await serperPost<{
+    organic?: Array<{
+      title: string;
+      link: string;
+      rating?: number;
+      ratingCount?: number;
+    }>;
+  }>("/search", { q, gl: "us", hl: "en", num: 5 });
+
+  const candidates = (data.organic ?? []).filter(
+    (r) => r.rating != null && r.ratingCount != null && r.link.includes("/biz/"),
+  );
+  if (candidates.length === 0) return null;
+
+  // Prefer the result whose URL contains the canonical slug (if provided).
+  const matched = args.slug
+    ? candidates.find((r) => r.link.includes(`/biz/${args.slug}`))
+    : null;
+  const pick = matched ?? candidates[0];
+  return {
+    rating: pick.rating!,
+    ratingCount: pick.ratingCount!,
+    url: pick.link,
+    title: pick.title,
+  };
+}
+
+/**
+ * Look up a Google Maps business listing via Serper's /places endpoint.
+ *
+ * Avoids the Google Places API (which needs gmbPlaceId per store, plus a
+ * key+billing setup). Returns the first match for "<name> <city>".
+ */
+export async function lookupGoogleBusiness(args: {
+  name: string;
+  city: string;
+}): Promise<{
+  rating: number;
+  ratingCount: number;
+  address: string;
+  cid?: string;
+  category?: string;
+  title: string;
+} | null> {
+  const data = await serperPost<{ places?: SerperPlaceResult[] }>(
+    "/places",
+    { q: `${args.name} ${args.city}`, gl: "us" },
+  );
+  const top = (data.places ?? [])[0];
+  if (!top || top.rating == null || top.ratingCount == null) return null;
+  return {
+    rating: top.rating,
+    ratingCount: top.ratingCount,
+    address: top.address,
+    cid: top.cid,
+    category: top.category,
+    title: top.title,
+  };
+}
+
 export type SerperPlaceResult = {
   position: number;
   title: string;
