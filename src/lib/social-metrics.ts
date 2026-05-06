@@ -37,9 +37,33 @@ export async function snapshotInstagram(username: string): Promise<Snapshot> {
     followsCount?: number;
     postsCount?: number;
     igtvVideoCount?: number;
+    latestPosts?: Array<{
+      likesCount?: number;
+      commentsCount?: number;
+      videoViewCount?: number;
+      videoPlayCount?: number;
+    }>;
   }>;
   const p = arr[0];
   if (!p) throw new Error("IG profile returned no data");
+
+  // The IG scraper attaches the most recent ~12 posts under `latestPosts`,
+  // each with per-post engagement. Sum these so we surface real post-level
+  // likes / comments / views — the profile object itself only exposes
+  // followersCount, not aggregate engagement.
+  let totalLikes = 0;
+  let totalViews = 0;
+  let totalComments = 0;
+  let sampleSize = 0;
+  for (const post of p.latestPosts ?? []) {
+    totalLikes += post.likesCount ?? 0;
+    totalComments += post.commentsCount ?? 0;
+    totalViews += post.videoViewCount ?? post.videoPlayCount ?? 0;
+    sampleSize++;
+  }
+  const avgEngagement =
+    sampleSize > 0 ? (totalLikes + totalComments) / sampleSize : undefined;
+
   return {
     platform: "instagram",
     handle: p.username ?? username,
@@ -48,6 +72,9 @@ export async function snapshotInstagram(username: string): Promise<Snapshot> {
     followersCount: p.followersCount,
     followingCount: p.followsCount,
     postsCount: p.postsCount,
+    totalLikes: sampleSize > 0 ? totalLikes : undefined,
+    totalViews: sampleSize > 0 ? totalViews : undefined,
+    avgEngagement,
     raw: p,
   };
 }
