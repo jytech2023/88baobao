@@ -59,7 +59,7 @@
     "lastUpdated": "Last updated",
     "empty": "No analytics data yet",
     "emptyHint": "The fetch-social-metrics + rollup-daily crons need to land at least one row in social_daily_stats. Try triggering them manually or wait for the next scheduled run.",
-    "aggregate": "(all handles)",
+    "aggregate": "All handles (sum)",
     "buckets": "buckets",
     "col": {
       "period": "Period",

@@ -59,7 +59,7 @@
     "lastUpdated": "最近更新",
     "empty": "暂无流量数据",
     "emptyHint": "需要 fetch-social-metrics + rollup-daily 定时任务先往 social_daily_stats 写入至少一行数据。可以手动触发,或等下一次定时执行。",
-    "aggregate": "(全部账号)",
+    "aggregate": "全部账号合计",
     "buckets": "段",
     "col": {
       "period": "时间段",

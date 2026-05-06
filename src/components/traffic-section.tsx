@@ -1,13 +1,10 @@
-import type { Metadata } from "next";
 import { neon } from "@neondatabase/serverless";
 import { getTranslations } from "next-intl/server";
 
-export const dynamic = "force-dynamic";
-
 const sql = neon(process.env.DATABASE_URL!);
 
-const PERIODS = ["day", "week", "month", "quarter", "year"] as const;
-type Period = (typeof PERIODS)[number];
+export const PERIODS = ["day", "week", "month", "quarter", "year"] as const;
+export type Period = (typeof PERIODS)[number];
 
 const LOOKBACK_DAYS: Record<Period, number> = {
   day: 30,
@@ -36,7 +33,9 @@ type Channel = {
   rows: Row[];
 };
 
-async function loadAnalytics(period: Period): Promise<{ channels: Channel[]; lastUpdated: string | null }> {
+async function loadAnalytics(
+  period: Period,
+): Promise<{ channels: Channel[]; lastUpdated: string | null }> {
   const cutoff = new Date(Date.now() - LOOKBACK_DAYS[period] * 86400000)
     .toISOString()
     .slice(0, 10);
@@ -85,51 +84,90 @@ async function loadAnalytics(period: Period): Promise<{ channels: Channel[]; las
     `) as unknown as { m: string | null }[];
     lastUpdated = max[0]?.m ?? null;
   } catch (e) {
-    console.error("analytics query failed:", e);
+    console.error("traffic-section query failed:", e);
   }
 
   const map = new Map<string, Channel>();
   for (const r of rows) {
+    // Drop the rollup's per-platform '*' rows — they only carry posts_published,
+    // not followers, and would render misleading half-empty cards. We synthesize
+    // a proper cross-handle aggregate below.
+    if (r.account_handle === "*") continue;
     const key = `${r.platform}|${r.account_handle}`;
     if (!map.has(key)) {
       map.set(key, { platform: r.platform, handle: r.account_handle, rows: [] });
     }
     map.get(key)!.rows.push(r);
   }
-  const channels = [...map.values()].sort((a, b) => {
-    if (a.handle === "*" && b.handle !== "*") return -1;
-    if (a.handle !== "*" && b.handle === "*") return 1;
-    return a.platform.localeCompare(b.platform) || a.handle.localeCompare(b.handle);
-  });
+  const perHandle = [...map.values()];
+
+  // Synthesize one "(all)" aggregate channel per platform: sums posts/likes/
+  // views/delta and followers across handles, per bucket.
+  const aggMap = new Map<string, Channel>();
+  for (const ch of perHandle) {
+    let agg = aggMap.get(ch.platform);
+    if (!agg) {
+      agg = { platform: ch.platform, handle: "(all)", rows: [] };
+      aggMap.set(ch.platform, agg);
+    }
+    for (const r of ch.rows) {
+      let aggRow = agg.rows.find((x) => x.bucket === r.bucket);
+      if (!aggRow) {
+        aggRow = {
+          platform: r.platform,
+          account_handle: "(all)",
+          bucket: r.bucket,
+          posts: 0,
+          likes: 0,
+          views: 0,
+          followers_delta: 0,
+          followers_end: 0,
+          reviews: 0,
+          avg_rating: null,
+        };
+        agg.rows.push(aggRow);
+      }
+      aggRow.posts += r.posts ?? 0;
+      aggRow.likes = (aggRow.likes ?? 0) + Number(r.likes ?? 0);
+      aggRow.views = (aggRow.views ?? 0) + Number(r.views ?? 0);
+      aggRow.followers_delta =
+        (aggRow.followers_delta ?? 0) + (r.followers_delta ?? 0);
+      aggRow.followers_end =
+        (aggRow.followers_end ?? 0) + (r.followers_end ?? 0);
+      aggRow.reviews = (aggRow.reviews ?? 0) + (r.reviews ?? 0);
+    }
+    // sort agg rows by bucket desc to match per-handle ordering
+    agg.rows.sort((a, b) => b.bucket.localeCompare(a.bucket));
+  }
+  const aggregates = [...aggMap.values()];
+
+  // Render order: aggregates first (one per platform), then individual handles.
+  const channels = [
+    ...aggregates.sort((a, b) => a.platform.localeCompare(b.platform)),
+    ...perHandle.sort(
+      (a, b) =>
+        a.platform.localeCompare(b.platform) || a.handle.localeCompare(b.handle),
+    ),
+  ];
   return { channels, lastUpdated };
 }
 
-export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("Analytics");
-  return { title: t("title") };
-}
-
-export default async function AnalyticsPage({
-  params,
-  searchParams,
+export async function TrafficSection({
+  period,
+  locale,
 }: {
-  params: Promise<{ locale: string }>;
-  searchParams: Promise<{ period?: string }>;
+  period: Period;
+  locale: string;
 }) {
-  const { locale } = await params;
-  const { period: rawPeriod } = await searchParams;
-  const period: Period = PERIODS.includes(rawPeriod as Period)
-    ? (rawPeriod as Period)
-    : "day";
   const t = await getTranslations("Analytics");
   const { channels, lastUpdated } = await loadAnalytics(period);
 
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{t("title")}</h1>
-          <p className="text-sm text-black/60 dark:text-white/60">{t("subtitle")}</p>
+          <h2 className="text-lg font-semibold">{t("title")}</h2>
+          <p className="text-xs text-black/60 dark:text-white/60">{t("subtitle")}</p>
         </div>
         <nav
           aria-label={t("periodSwitcher")}
@@ -138,7 +176,7 @@ export default async function AnalyticsPage({
           {PERIODS.map((p) => (
             <a
               key={p}
-              href={`/${locale}/analytics?period=${p}`}
+              href={`/${locale}/dashboard?period=${p}`}
               aria-current={p === period ? "page" : undefined}
               className={`rounded px-3 py-1.5 text-sm transition ${
                 p === period
@@ -154,7 +192,8 @@ export default async function AnalyticsPage({
 
       {lastUpdated && (
         <p className="text-xs text-black/40 dark:text-white/40">
-          {t("lastUpdated")}: {new Date(lastUpdated).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}
+          {t("lastUpdated")}:{" "}
+          {new Date(lastUpdated).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}
         </p>
       )}
 
@@ -175,7 +214,7 @@ export default async function AnalyticsPage({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -212,7 +251,7 @@ function ChannelTable({
           <div className="min-w-0">
             <div className="font-medium capitalize">{platform}</div>
             <div className="truncate font-mono text-xs text-black/50 dark:text-white/50">
-              {handle === "*" ? t("aggregate") : `@${handle}`}
+              {handle === "(all)" ? t("aggregate") : `@${handle}`}
             </div>
           </div>
         </div>
@@ -238,16 +277,11 @@ function ChannelTable({
             {rows.map((r) => {
               const delta = r.followers_delta;
               return (
-                <tr
-                  key={r.bucket}
-                  className="border-t border-black/5 dark:border-white/5"
-                >
+                <tr key={r.bucket} className="border-t border-black/5 dark:border-white/5">
                   <td className="px-3 py-2 font-mono text-xs">
                     {formatBucket(r.bucket, period)}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono">
-                    {r.posts ?? 0}
-                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{r.posts ?? 0}</td>
                   {showFollowers && (
                     <td className="px-3 py-2 text-right font-mono">
                       {fmtNum(r.followers_end)}
@@ -302,7 +336,6 @@ function fmtNum(n: number | string | null): string {
 }
 
 function formatBucket(bucket: string, period: Period): string {
-  // bucket comes back as "YYYY-MM-DD" (date::text). Parse without timezone shift.
   const [yy, mm, dd] = bucket.split("-").map((s) => parseInt(s, 10));
   if (period === "day") return `${yy}-${pad(mm)}-${pad(dd)}`;
   if (period === "week") {

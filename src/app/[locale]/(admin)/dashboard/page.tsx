@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { neon } from "@neondatabase/serverless";
 import { TaskList } from "@/components/task-list";
+import { TrafficSection, PERIODS, type Period } from "@/components/traffic-section";
 
 export const dynamic = "force-dynamic";
 
@@ -207,10 +208,16 @@ async function loadStats() {
 
 export default async function DashboardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ period?: string }>;
 }) {
   const { locale } = await params;
+  const { period: rawPeriod } = await searchParams;
+  const period: Period = PERIODS.includes(rawPeriod as Period)
+    ? (rawPeriod as Period)
+    : "day";
   const t = await getTranslations("Dashboard");
   const data = await loadStats();
   const sentimentNet = data.sentiment.positive - data.sentiment.negative;
@@ -224,6 +231,8 @@ export default async function DashboardPage({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{t("title")}</h1>
+
+      <TrafficSection period={period} locale={locale} />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat
