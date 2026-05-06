@@ -15,3 +15,17 @@
 
 export const PROJECT_ID = "c0bb2adc-77b8-43d4-8a7e-be88ba0babb0";
 export const PROJECT_SLUG = "88baobao";
+
+// Connected social handles for metric snapshots.
+// Hardcoded for the same reason PROJECT_ID is — used to live in a
+// `social_sources` table that got rebuilt empty during db:push.
+export const SOCIAL_HANDLES = {
+  instagram: [
+    "88baobao_official",
+    "88_baobao_vv",
+    "88baobao.manteca",
+    "88baobao.stockton",
+    "88baobao_castrovalley",
+  ],
+  tiktok: ["88baobao.official"],
+} as const;

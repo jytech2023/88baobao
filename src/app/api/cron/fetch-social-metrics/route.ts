@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import { assertCronAuth } from "@/lib/cron-auth";
 import { snapshotInstagram, snapshotTikTok, snapshotFacebook } from "@/lib/social-metrics";
-import { PROJECT_ID } from "@/lib/project";
+import { PROJECT_ID, SOCIAL_HANDLES } from "@/lib/project";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -19,22 +19,15 @@ export async function GET(req: NextRequest) {
 
   const projectId = PROJECT_ID;
 
-  // Read all 'source'-role accounts from social_sources for this project,
-  // plus Facebook as a single 'destination' (since Buffer aggregates posts
-  // across the connected page channel).
-  const sources = (await sql`
-    SELECT platform, username
-    FROM social_sources
-    WHERE project_id = ${projectId} AND role = 'source'
-  `) as { platform: string; username: string | null }[];
-
+  // Hardcoded source list — see src/lib/project.ts SOCIAL_HANDLES. The
+  // social_sources table this used to read from got wiped during the same
+  // db:push that took out projects.
   const tasks: Array<{ key: string; fn: () => Promise<unknown> }> = [];
-  for (const s of sources) {
-    if (s.platform === "instagram" && s.username) {
-      tasks.push({ key: `instagram:${s.username}`, fn: () => snapshotInstagram(s.username!) });
-    } else if (s.platform === "tiktok" && s.username) {
-      tasks.push({ key: `tiktok:${s.username}`, fn: () => snapshotTikTok(s.username!) });
-    }
+  for (const username of SOCIAL_HANDLES.instagram) {
+    tasks.push({ key: `instagram:${username}`, fn: () => snapshotInstagram(username) });
+  }
+  for (const username of SOCIAL_HANDLES.tiktok) {
+    tasks.push({ key: `tiktok:${username}`, fn: () => snapshotTikTok(username) });
   }
   tasks.push({ key: "facebook:page", fn: () => snapshotFacebook() });
 

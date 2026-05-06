@@ -132,9 +132,22 @@ export async function rollupDaily(dateStr?: string): Promise<RollupResult> {
     }
   }
 
+  // DELETE-then-INSERT (not ON CONFLICT) — the daily_stats_unique index was
+  // dropped during db:push and recreating it on prod is more disruptive than
+  // doing the idempotency two-step here. Keep an eye on this if traffic ever
+  // spikes; it'd be worth restoring the index for atomicity then.
+  // NOTE: fetch-yelp and fetch-google may have already written rows for today,
+  // so only delete rows we are about to overwrite (matched by platform+handle).
   let n = 0;
   const details: RollupResult["details"] = [];
   for (const r of rowsByKey.values()) {
+    await sql`
+      DELETE FROM social_daily_stats
+      WHERE project_id = ${pid}
+        AND platform = ${r.platform}
+        AND account_handle = ${r.handle}
+        AND date = ${date}::date
+    `;
     await sql`
       INSERT INTO social_daily_stats (
         project_id, platform, account_handle, date,
@@ -147,15 +160,6 @@ export async function rollupDaily(dateStr?: string): Promise<RollupResult> {
         ${r.followers}, ${r.delta},
         ${r.reviews}, ${r.rating}
       )
-      ON CONFLICT (project_id, platform, account_handle, date) DO UPDATE SET
-        posts_published = EXCLUDED.posts_published,
-        total_likes     = COALESCE(EXCLUDED.total_likes,     social_daily_stats.total_likes),
-        total_views     = COALESCE(EXCLUDED.total_views,     social_daily_stats.total_views),
-        followers_count = COALESCE(EXCLUDED.followers_count, social_daily_stats.followers_count),
-        followers_delta = COALESCE(EXCLUDED.followers_delta, social_daily_stats.followers_delta),
-        reviews_count   = COALESCE(EXCLUDED.reviews_count,   social_daily_stats.reviews_count),
-        avg_rating      = COALESCE(EXCLUDED.avg_rating,      social_daily_stats.avg_rating),
-        computed_at     = NOW()
     `;
     n++;
     details.push({ platform: r.platform, handle: r.handle, posts: r.posts, followers: r.followers, delta: r.delta });

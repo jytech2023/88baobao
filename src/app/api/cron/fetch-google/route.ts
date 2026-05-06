@@ -44,6 +44,16 @@ export async function GET(req: NextRequest) {
         failed.push({ slug: store.slug, reason: "no Google Places match" });
         continue;
       }
+      // DELETE-then-INSERT instead of ON CONFLICT — db:push dropped the
+      // daily_stats_unique index, so the upsert pattern fails until the
+      // index is restored.
+      await sql`
+        DELETE FROM social_daily_stats
+        WHERE project_id = ${projectId}
+          AND platform = 'google'
+          AND account_handle = ${store.slug}
+          AND date = ${date}::date
+      `;
       await sql`
         INSERT INTO social_daily_stats (
           project_id, platform, account_handle, date,
@@ -52,10 +62,6 @@ export async function GET(req: NextRequest) {
           ${projectId}, 'google', ${store.slug}, ${date}::date,
           ${r.ratingCount}, ${r.rating}
         )
-        ON CONFLICT (project_id, platform, account_handle, date) DO UPDATE SET
-          reviews_count = EXCLUDED.reviews_count,
-          avg_rating    = EXCLUDED.avg_rating,
-          computed_at   = NOW()
       `;
       saved.push({ slug: store.slug, rating: r.rating, reviews: r.ratingCount });
     } catch (err) {

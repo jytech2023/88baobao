@@ -46,6 +46,16 @@ export async function GET(req: NextRequest) {
         failed.push({ slug: store.slug, reason: "no Yelp SERP match" });
         continue;
       }
+      // DELETE-then-INSERT instead of ON CONFLICT — db:push lost the unique
+      // index daily_stats_unique and recreating it on prod is more disruptive
+      // than just being explicit about idempotency here.
+      await sql`
+        DELETE FROM social_daily_stats
+        WHERE project_id = ${projectId}
+          AND platform = 'yelp'
+          AND account_handle = ${store.slug}
+          AND date = ${date}::date
+      `;
       await sql`
         INSERT INTO social_daily_stats (
           project_id, platform, account_handle, date,
@@ -54,10 +64,6 @@ export async function GET(req: NextRequest) {
           ${projectId}, 'yelp', ${store.slug}, ${date}::date,
           ${r.ratingCount}, ${r.rating}
         )
-        ON CONFLICT (project_id, platform, account_handle, date) DO UPDATE SET
-          reviews_count = EXCLUDED.reviews_count,
-          avg_rating    = EXCLUDED.avg_rating,
-          computed_at   = NOW()
       `;
       saved.push({ slug: store.slug, rating: r.rating, reviews: r.ratingCount });
     } catch (err) {
