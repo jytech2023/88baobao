@@ -45,6 +45,33 @@
     "hideCompleted": "Hide completed",
     "websiteTrafficTodo": "Website traffic monitoring — to be added once Vercel Analytics or GA4 is wired in."
   },
+  "Analytics": {
+    "title": "Analytics",
+    "subtitle": "Daily, weekly, monthly, quarterly and yearly traffic across every channel.",
+    "periodSwitcher": "Granularity",
+    "period": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "quarter": "Quarter",
+      "year": "Year"
+    },
+    "lastUpdated": "Last updated",
+    "empty": "No analytics data yet",
+    "emptyHint": "The fetch-social-metrics + rollup-daily crons need to land at least one row in social_daily_stats. Try triggering them manually or wait for the next scheduled run.",
+    "aggregate": "(all handles)",
+    "buckets": "buckets",
+    "col": {
+      "period": "Period",
+      "posts": "Posts",
+      "followers": "Followers",
+      "delta": "Δ Followers",
+      "likes": "Likes",
+      "views": "Views",
+      "reviews": "Reviews",
+      "rating": "Rating"
+    }
+  },
   "Stores": {
     "title": "Stores",
     "subtitle": "Per-store reviews and ratings across Google + Yelp",
@@ -64,6 +91,7 @@
   },
   "Nav": {
     "dashboard": "Dashboard",
+    "analytics": "Analytics",
     "stores": "Stores",
     "menu": "Menu",
     "members": "Members",

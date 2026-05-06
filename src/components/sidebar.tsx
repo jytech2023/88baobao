@@ -3,6 +3,7 @@ import { Link } from "@/i18n/routing";
 
 const navItems = [
   { href: "/dashboard", key: "dashboard" },
+  { href: "/analytics", key: "analytics" },
   { href: "/stores", key: "stores" },
   { href: "/menu", key: "menu" },
   { href: "/members", key: "members" },

@@ -50,26 +50,26 @@ export async function GET(req: NextRequest) {
     failed: [],
   };
 
-  await Promise.all(
-    tasks.map(async ({ key, fn }) => {
-      try {
-        const snap = (await fn()) as Awaited<ReturnType<typeof snapshotInstagram>>;
-        await sql`
-          INSERT INTO social_metrics_snapshots
-            (project_id, platform, handle, external_id, profile_url,
-             followers_count, following_count, posts_count,
-             total_likes, total_views, avg_engagement, raw)
-          VALUES
-            (${projectId}, ${snap.platform}, ${snap.handle ?? null}, ${snap.externalId ?? null}, ${snap.profileUrl ?? null},
-             ${snap.followersCount ?? null}, ${snap.followingCount ?? null}, ${snap.postsCount ?? null},
-             ${snap.totalLikes ?? null}, ${snap.totalViews ?? null}, ${snap.avgEngagement ?? null}, ${JSON.stringify(snap.raw)})
-        `;
-        result.saved.push(key);
-      } catch (err) {
-        result.failed.push({ platform: key, reason: err instanceof Error ? err.message : String(err) });
-      }
-    }),
-  );
+  // Sequential, not Promise.all — Apify free tier returns 402 on concurrent
+  // bursts of the same actor (observed 2026-05-05).
+  for (const { key, fn } of tasks) {
+    try {
+      const snap = (await fn()) as Awaited<ReturnType<typeof snapshotInstagram>>;
+      await sql`
+        INSERT INTO social_metrics_snapshots
+          (project_id, platform, handle, external_id, profile_url,
+           followers_count, following_count, posts_count,
+           total_likes, total_views, avg_engagement, raw)
+        VALUES
+          (${projectId}, ${snap.platform}, ${snap.handle ?? null}, ${snap.externalId ?? null}, ${snap.profileUrl ?? null},
+           ${snap.followersCount ?? null}, ${snap.followingCount ?? null}, ${snap.postsCount ?? null},
+           ${snap.totalLikes ?? null}, ${snap.totalViews ?? null}, ${snap.avgEngagement ?? null}, ${JSON.stringify(snap.raw)})
+      `;
+      result.saved.push(key);
+    } catch (err) {
+      result.failed.push({ platform: key, reason: err instanceof Error ? err.message : String(err) });
+    }
+  }
 
   return NextResponse.json({ ok: true, ...result });
 }

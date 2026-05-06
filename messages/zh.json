@@ -45,6 +45,33 @@
     "hideCompleted": "隐藏已完成",
     "websiteTrafficTodo": "网站流量监控 — 接入 Vercel Analytics 或 GA4 后启用。"
   },
+  "Analytics": {
+    "title": "流量分析",
+    "subtitle": "全渠道每日 / 每周 / 每月 / 每季度 / 每年的流量数据",
+    "periodSwitcher": "时间粒度",
+    "period": {
+      "day": "日",
+      "week": "周",
+      "month": "月",
+      "quarter": "季",
+      "year": "年"
+    },
+    "lastUpdated": "最近更新",
+    "empty": "暂无流量数据",
+    "emptyHint": "需要 fetch-social-metrics + rollup-daily 定时任务先往 social_daily_stats 写入至少一行数据。可以手动触发,或等下一次定时执行。",
+    "aggregate": "(全部账号)",
+    "buckets": "段",
+    "col": {
+      "period": "时间段",
+      "posts": "发帖",
+      "followers": "粉丝",
+      "delta": "粉丝变化",
+      "likes": "点赞",
+      "views": "播放/浏览",
+      "reviews": "评价",
+      "rating": "评分"
+    }
+  },
   "Stores": {
     "title": "门店管理",
     "subtitle": "各门店在 Google + Yelp 的评价数据",
@@ -64,6 +91,7 @@
   },
   "Nav": {
     "dashboard": "数据看板",
+    "analytics": "流量分析",
     "stores": "门店管理",
     "menu": "菜单管理",
     "members": "会员中心",
